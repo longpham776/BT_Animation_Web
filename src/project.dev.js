@@ -63,7 +63,7 @@ window.__require = function e(t, n, r) {
           var bullet = cc.instantiate(this.Bullet);
           bullet.parent = this.Skeleton.node;
           bullet.active = true;
-          bullet.runAction(cc.sequence(cc.moveBy(.1, 3e3, 0), cc.callFunc(this.removeBullet, this)));
+          bullet.runAction(cc.sequence(cc.moveBy(1, 3e3, 0), cc.callFunc(this.removeBullet, this)));
           this.Skeleton.setAnimation(0, "idle-shoot", false);
           this.Skeleton.addAnimation(0, "idle", true);
         }
@@ -75,10 +75,10 @@ window.__require = function e(t, n, r) {
         var _this = this;
         cc.log(value);
         if (!this._flag) {
-          var jumpUp = cc.moveBy(.4, cc.v2(0, 200));
-          var jumpDown = cc.moveBy(.4, cc.v2(0, -200));
+          var jumpUp = cc.moveBy(.4, cc.v2(0, 50));
+          var jumpDown = cc.moveBy(1, cc.v2(0, -50));
           var jump = cc.sequence(jumpUp, cc.delayTime(.1), jumpDown);
-          this.node.getComponent(cc.BoxCollider).node.runAction(jump);
+          this.node.runAction(jump);
           this._flag = true;
           this.Skeleton.setAnimation(0, "jump", false);
           this.Skeleton.addAnimation(0, "idle-turn", false);
@@ -112,8 +112,7 @@ window.__require = function e(t, n, r) {
         } else if (!this._flag || !value) {
           this._flag = false;
           this.node.stopActionByTag(0);
-          this.Skeleton.setAnimation(0, "run-to-idle", false);
-          this.Skeleton.addAnimation(0, "idle", true);
+          this.Skeleton.setAnimation(0, "idle", true);
         }
       },
       moveRight: function moveRight(value) {
@@ -129,13 +128,15 @@ window.__require = function e(t, n, r) {
         } else if (!this._flag || !value) {
           this._flag = false;
           this.node.stopActionByTag(0);
-          this.Skeleton.setAnimation(0, "run-to-idle", false);
-          this.Skeleton.addAnimation(0, "idle", true);
+          this.Skeleton.setAnimation(0, "idle", true);
         }
       },
       start: function start() {
-        this.Skeleton.addAnimation(0, "portal", false);
+        this.Skeleton.setAnimation(0, "portal", false);
         this.Skeleton.addAnimation(0, "idle", true);
+      },
+      update: function update(dt) {
+        this.node.getComponent(cc.BoxCollider).offset = cc.v2(this.Skeleton.findBone("torso3").worldX, this.Skeleton.findBone("torso3").worldY);
       }
     });
     cc._RF.pop();
@@ -306,7 +307,9 @@ window.__require = function e(t, n, r) {
     cc.Class({
       extends: cc.Component,
       properties: {
-        winLayout: cc.Layout
+        winLayout: cc.Layout,
+        loseLayout: cc.Layout,
+        _flag: false
       },
       onCollisionEnter: function onCollisionEnter(other, self) {
         cc.log("on collision enter");
@@ -314,34 +317,66 @@ window.__require = function e(t, n, r) {
         cc.log(other);
         switch (self.node.name) {
          case "SpineBoy":
-          self.node.getComponent(sp.Skeleton).setAnimation(0, "death", false);
-          "windoor" == other.node.name && (this.winLayout.node.active = true);
+          if ("windoor" == other.node.name) {
+            this.winLayout.node.active = true;
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.stopAllActions();
+          } else if ("StartLayout" == other.node.name) {
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.runAction(cc.moveBy(0, 5, 0));
+          } else if ("EndLayout" == other.node.name) {
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.runAction(cc.moveBy(0, -5, 0));
+          } else if ("Spike" == other.node.name || "Rabbit" == other.node.name) {
+            if (!this._flag) {
+              this._flag = true;
+              self.node.getComponent(sp.Skeleton).setAnimation(0, "death", false);
+              this.loseLayout.node.active = true;
+            }
+            self.node.stopAllActions();
+            other.node.stopAllActions();
+            cc.systemEvent.off(cc.SystemEvent.EventType.KEY_DOWN);
+            cc.systemEvent.off(cc.SystemEvent.EventType.KEY_UP);
+          }
           break;
 
          case "Bullet":
           if ("Rabbit" == other.node.name) {
-            self.node.destroy();
+            cc.log(self.node.getChildren(cc.ParticleSystem)[0].active);
+            self.node.getChildren(cc.ParticleSystem)[0].active = true;
             other.node.runAction(cc.blink(.5, 3));
-            cc.log(other.node._children[0]._components[1].barSprite.node.color.b);
             other.node._children[0]._components[1].progress -= .1;
             other.node._children[0]._components[1].progress <= 0 && other.node.destroy();
-            Emitter.instance.emit("hit", true);
           }
+          break;
+
+         case "Rabbit":
+          "SpineBoy" == other.node.name && self.node.runAction(cc.speed(cc.moveBy(1, -150, 0), 3));
         }
       },
       onCollisionStay: function onCollisionStay(other, self) {
-        cc.log("on collision stay");
+        switch (self.node.name) {
+         case "SpineBoy":
+          if ("StartLayout" == other.node.name) {
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.runAction(cc.moveBy(0, 5, 0));
+          } else if ("EndLayout" == other.node.name) {
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.runAction(cc.moveBy(0, -5, 0));
+          } else if ("windoor" == other.node.name) {
+            this.winLayout.node.active = true;
+            self.node.getComponent(sp.Skeleton).setAnimation(0, "idle", false);
+            self.node.stopAllActions();
+          }
+        }
       },
-      onCollisionExit: function onCollisionExit(other, self) {
-        cc.log("on collision exit");
-      },
+      onCollisionExit: function onCollisionExit(other, self) {},
       onLoad: function onLoad() {
         var manager = cc.director.getCollisionManager();
         manager.enabled = true;
-        manager.enabledDebugDraw = true;
-        manager.enabledDrawBoundingBox = true;
       },
-      start: function start() {}
+      start: function start() {},
+      update: function update(dt) {}
     });
     cc._RF.pop();
   }, {
@@ -479,12 +514,58 @@ window.__require = function e(t, n, r) {
       start: function start() {
         this.Hp.progress = 1;
         this.node.runAction(cc.repeatForever(cc.sequence(cc.scaleTo(.5, .4, .38), cc.scaleTo(.5, .4, .4))));
+        this.node.runAction(cc.repeatForever(cc.sequence(cc.moveBy(3, -150, 0), cc.delayTime(3), cc.moveBy(3, 150, 0), cc.delayTime(3))));
+      },
+      update: function update(dt) {
+        cc.speed();
+        Math.floor(this.node.x) <= 21 ? this.node.runAction(cc.sequence(cc.delayTime(3), cc.flipX(true))) : Math.floor(this.node.x) >= 171 && this.node.runAction(cc.sequence(cc.delayTime(3), cc.flipX(false)));
       }
     });
     cc._RF.pop();
   }, {
     mEmitter: "mEmitter"
   } ],
+  Score: [ function(require, module, exports) {
+    "use strict";
+    cc._RF.push(module, "29d8eEqokZL5IhyxKgPDv7/", "Score");
+    "use strict";
+    cc.Class({
+      extends: cc.Component,
+      properties: {
+        _score: 0,
+        scoreGame: cc.RichText,
+        loseLayout: cc.Layout
+      },
+      onLoad: function onLoad() {},
+      start: function start() {
+        this.updateScore();
+      },
+      updateScore: function updateScore() {
+        var _this = this;
+        var actions = [ cc.delayTime(.03), cc.callFunc(function() {
+          _this.scoreGame.string = "<color=#0fffff>" + _this._score++ + "</color>";
+        }) ];
+        this.scoreGame.node.runAction(cc.repeat(cc.sequence(actions), 101));
+      },
+      countDownScore: function countDownScore() {
+        var _this2 = this;
+        this.scoreGame.node.runAction(cc.repeatForever(cc.sequence(cc.callFunc(this.checkScore()), cc.delayTime(2), cc.callFunc(function() {
+          _this2.scoreGame.string = "<color=#0fffff>" + _this2._score-- + "</color>";
+        }))));
+      },
+      checkScore: function checkScore() {
+        if (this._score <= 0) {
+          this.node.stopAllActions();
+          return this.loseGame();
+        }
+      },
+      loseGame: function loseGame() {
+        this.loseLayout.node.active = true;
+      },
+      update: function update(dt) {}
+    });
+    cc._RF.pop();
+  }, {} ],
   mEmitter: [ function(require, module, exports) {
     "use strict";
     cc._RF.push(module, "cb46aAtteZNOYRFkavQxGCI", "mEmitter");
@@ -552,4 +633,4 @@ window.__require = function e(t, n, r) {
   }, {
     events: 1
   } ]
-}, {}, [ "Animation", "Collider", "HelloWorld", "KeyController", "ScaleY", "mEmitter" ]);
+}, {}, [ "Animation", "Collider", "HelloWorld", "KeyController", "ScaleY", "Score", "mEmitter" ]);
